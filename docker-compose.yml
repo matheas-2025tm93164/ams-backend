@@ -1,0 +1,65 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    working_dir: /app/services/user_service
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: users_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-use-at-least-32-chars-long!!}
+      SEED_DEMO_USERS: "1"
+      PYTHONPATH: /app/packages/shared/src:/app/services/user_service
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+
+  complaint-service:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+    working_dir: /app/services/complaint_service
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: complaints_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-use-at-least-32-chars-long!!}
+      USER_SERVICE_URL: http://user-service:8001
+      UPLOAD_DIR: /data/uploads
+      PYTHONPATH: /app/packages/shared/src:/app/services/complaint_service
+    volumes:
+      - complaint_uploads:/data/uploads
+    depends_on:
+      - user-service
+    ports:
+      - "8002:8002"
+
+  gateway:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    working_dir: /app/services/gateway
+    environment:
+      USER_SERVICE_URL: http://user-service:8001
+      COMPLAINT_SERVICE_URL: http://complaint-service:8002
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      PYTHONPATH: /app/packages/shared/src:/app/services/gateway
+    depends_on:
+      - user-service
+      - complaint-service
+    ports:
+      - "8000:8000"
+
+volumes:
+  mongo_data:
+  complaint_uploads:

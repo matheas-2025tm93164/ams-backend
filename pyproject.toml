@@ -1,0 +1,24 @@
+[project]
+name = "apartment-maintenance-backend-meta"
+version = "0.1.0"
+requires-python = ">=3.9"
+description = "Use requirements.txt for installs; pytest config below."
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = [
+    "packages/shared/tests",
+    "services/user_service/tests",
+    "services/complaint_service/tests",
+    "services/gateway/tests",
+]
+pythonpath = [
+    "packages/shared/src",
+    "services/user_service",
+    "services/complaint_service",
+    "services/gateway",
+]
+
+[tool.coverage.run]
+source = ["services"]
