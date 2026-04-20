@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.domain.models import UserPublic
 from app.infrastructure.mongo import MongoConnection
 from app.infrastructure.user_repository import UserRepository
-from shared.enums import Role
+from shared.enums import AccountStatus, Role
 from shared.jwt_tokens import verify_bearer_token
 
 security = HTTPBearer(auto_error=False)
@@ -53,6 +53,8 @@ async def get_current_user(
     user = await auth.get_user(sub)
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    if user.account_status != AccountStatus.ACTIVE:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Request failed")
     return user
 
 

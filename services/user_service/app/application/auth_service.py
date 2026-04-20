@@ -8,7 +8,7 @@ from argon2.exceptions import VerifyMismatchError
 from app.config import Settings, get_settings
 from app.domain.models import UserDocument, UserPublic
 from app.infrastructure.user_repository import UserRepository
-from shared.enums import Role
+from shared.enums import AccountStatus, Role
 from shared.jwt_tokens import create_access_token
 
 _hasher = PasswordHasher()
@@ -31,12 +31,32 @@ class AuthService:
         self._repo = repo
         self._settings = settings or get_settings()
 
-    async def register_resident(
+    async def login(self, email: str, password: str) -> tuple[UserPublic, str]:
+        user = await self._repo.find_by_email(email)
+        if not user or not verify_password(password, user.password_hash):
+            raise ValueError("invalid_credentials")
+        if user.account_status != AccountStatus.ACTIVE:
+            raise ValueError("invalid_credentials")
+        assert user.id
+        token = self._issue_token(user.id, user.email, user.role)
+        return self.to_public(user), token
+
+    async def get_user(self, user_id: str) -> UserPublic | None:
+        user = await self._repo.find_by_id(user_id)
+        if not user or not user.id:
+            return None
+        return self.to_public(user)
+
+    async def onboard_staff(
         self,
+        *,
         email: str,
         password: str,
         full_name: str,
-    ) -> tuple[UserPublic, str]:
+        address: str,
+        phone: str,
+        aadhar: str,
+    ) -> UserPublic:
         existing = await self._repo.find_by_email(email)
         if existing:
             raise ValueError("email_in_use")
@@ -46,26 +66,60 @@ class AuthService:
             email=email,
             password_hash=hash_password(password),
             full_name=full_name,
-            role=Role.RESIDENT,
+            role=Role.MAINTENANCE_STAFF,
             created_at=now,
+            account_status=AccountStatus.ACTIVE,
+            phone=phone,
+            address=address,
+            aadhar=aadhar,
+            family_members=[],
         )
         created = await self._repo.create(user)
-        token = self._issue_token(created.id, created.email, created.role)
-        return self._to_public(created), token
+        return self.to_public(created)
 
-    async def login(self, email: str, password: str) -> tuple[UserPublic, str]:
-        user = await self._repo.find_by_email(email)
-        if not user or not verify_password(password, user.password_hash):
-            raise ValueError("invalid_credentials")
-        assert user.id
-        token = self._issue_token(user.id, user.email, user.role)
-        return self._to_public(user), token
+    async def onboard_resident(
+        self,
+        *,
+        email: str,
+        password: str,
+        full_name: str,
+        phone: str,
+        aadhar: str,
+        family_members: list[str],
+    ) -> UserPublic:
+        existing = await self._repo.find_by_email(email)
+        if existing:
+            raise ValueError("email_in_use")
+        primary_lower = full_name.strip().casefold()
+        for m in family_members:
+            if m.strip().casefold() == primary_lower:
+                raise ValueError("family_duplicate_primary")
+        now = UserRepository.utcnow()
+        user = UserDocument(
+            id=None,
+            email=email,
+            password_hash=hash_password(password),
+            full_name=full_name,
+            role=Role.RESIDENT,
+            created_at=now,
+            account_status=AccountStatus.ACTIVE,
+            phone=phone,
+            address=None,
+            aadhar=aadhar,
+            family_members=family_members,
+        )
+        created = await self._repo.create(user)
+        return self.to_public(created)
 
-    async def get_user(self, user_id: str) -> UserPublic | None:
+    async def deactivate_user(self, user_id: str) -> None:
         user = await self._repo.find_by_id(user_id)
         if not user or not user.id:
-            return None
-        return self._to_public(user)
+            raise ValueError("not_found")
+        if user.role == Role.ADMIN:
+            raise ValueError("cannot_deactivate_admin")
+        ok = await self._repo.set_account_status(user.id, AccountStatus.RESIGNED)
+        if not ok:
+            raise ValueError("not_found")
 
     def _issue_token(self, user_id: str, email: str, role: Role) -> str:
         delta = timedelta(minutes=self._settings.access_token_expire_minutes)
@@ -77,11 +131,12 @@ class AuthService:
         )
 
     @staticmethod
-    def _to_public(user: UserDocument) -> UserPublic:
+    def to_public(user: UserDocument) -> UserPublic:
         assert user.id
         return UserPublic(
             id=user.id,
             email=user.email,
             full_name=user.full_name,
             role=user.role,
+            account_status=user.account_status,
         )

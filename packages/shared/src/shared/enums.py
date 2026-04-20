@@ -9,6 +9,11 @@ class Role(str, Enum):
     ADMIN = "admin"
 
 
+class AccountStatus(str, Enum):
+    ACTIVE = "active"
+    RESIGNED = "resigned"
+
+
 class ComplaintStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"

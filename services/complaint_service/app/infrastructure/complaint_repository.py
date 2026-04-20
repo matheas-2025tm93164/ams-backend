@@ -106,6 +106,14 @@ class ComplaintRepository:
         doc.pop("_id", None)
         await self._col.replace_one({"_id": oid}, doc)
 
+    async def delete_by_id(self, oid: str) -> bool:
+        try:
+            _id = ObjectId(oid)
+        except Exception:
+            return False
+        r = await self._col.delete_one({"_id": _id})
+        return r.deleted_count > 0
+
     async def aggregate_category_counts(self) -> list[dict]:
         pipeline = [{"$group": {"_id": "$category", "count": {"$sum": 1}}}]
         return await self._col.aggregate(list(pipeline)).to_list(length=50)

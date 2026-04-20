@@ -22,8 +22,8 @@ docker compose up --build
 
 Seeded demo accounts (when `SEED_DEMO_USERS=1`):
 
-- Admin: `admin@apartment.local` / `Admin123!pass`
-- Staff: `staff@apartment.local` / `Staff123!pass`
+- Admin: `admin@example.com` / `Admin123!pass`
+- Staff: `staff@example.com` / `Staff123!pass`
 
 Residents register via `POST /auth/register` through the gateway.
 
@@ -40,7 +40,19 @@ See `.env.example`. **JWT_SECRET** must match between User Service and Complaint
 
 ## Local development (without Docker)
 
-Install MongoDB locally, then:
+From the parent folder (project root), one command starts MongoDB (if needed), all three API processes, and the Vite dev server:
+
+```bash
+./scripts/dev-local.sh
+```
+
+Stop the three uvicorn processes (keeps MongoDB running):
+
+```bash
+./scripts/stop-dev-local.sh
+```
+
+Manual setup: install MongoDB locally, then:
 
 ```bash
 python3 -m venv .venv
