@@ -98,6 +98,11 @@ async def proxy_complaints_root(request: Request) -> Response:
     return await _proxy(_settings.complaint_service_url, request)
 
 
+@app.api_route("/reviews", methods=["GET", "OPTIONS"])
+async def proxy_reviews(request: Request) -> Response:
+    return await _proxy(_settings.complaint_service_url, request)
+
+
 @app.api_route("/analytics/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_analytics(full_path: str, request: Request) -> Response:
     return await _proxy(_settings.complaint_service_url, request)

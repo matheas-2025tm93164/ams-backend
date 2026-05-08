@@ -111,6 +111,72 @@ class AuthService:
         created = await self._repo.create(user)
         return self.to_public(created)
 
+    async def update_staff(
+        self,
+        user_id: str,
+        *,
+        full_name: str,
+        address: str,
+        phone: str,
+        aadhar: str | None,
+        password: str | None,
+    ) -> UserPublic:
+        user = await self._repo.find_by_id(user_id)
+        if not user or not user.id:
+            raise ValueError("not_found")
+        if user.role != Role.MAINTENANCE_STAFF:
+            raise ValueError("wrong_role")
+        patch: dict[str, object] = {
+            "full_name": full_name.strip(),
+            "address": address.strip(),
+            "phone": phone.strip(),
+        }
+        if aadhar is not None:
+            patch["aadhar"] = aadhar
+        if password:
+            patch["password_hash"] = hash_password(password)
+        ok = await self._repo.update_user_fields(user_id, patch)
+        if not ok:
+            raise ValueError("not_found")
+        updated = await self._repo.find_by_id(user_id)
+        assert updated and updated.id
+        return self.to_public(updated)
+
+    async def update_resident(
+        self,
+        user_id: str,
+        *,
+        full_name: str,
+        phone: str,
+        aadhar: str | None,
+        family_members: list[str],
+        password: str | None,
+    ) -> UserPublic:
+        user = await self._repo.find_by_id(user_id)
+        if not user or not user.id:
+            raise ValueError("not_found")
+        if user.role != Role.RESIDENT:
+            raise ValueError("wrong_role")
+        primary_lower = full_name.strip().casefold()
+        for m in family_members:
+            if m.strip().casefold() == primary_lower:
+                raise ValueError("family_duplicate_primary")
+        patch: dict[str, object] = {
+            "full_name": full_name.strip(),
+            "phone": phone.strip(),
+            "family_members": family_members,
+        }
+        if aadhar is not None:
+            patch["aadhar"] = aadhar
+        if password:
+            patch["password_hash"] = hash_password(password)
+        ok = await self._repo.update_user_fields(user_id, patch)
+        if not ok:
+            raise ValueError("not_found")
+        updated = await self._repo.find_by_id(user_id)
+        assert updated and updated.id
+        return self.to_public(updated)
+
     async def deactivate_user(self, user_id: str) -> None:
         user = await self._repo.find_by_id(user_id)
         if not user or not user.id:
@@ -118,6 +184,16 @@ class AuthService:
         if user.role == Role.ADMIN:
             raise ValueError("cannot_deactivate_admin")
         ok = await self._repo.set_account_status(user.id, AccountStatus.RESIGNED)
+        if not ok:
+            raise ValueError("not_found")
+
+    async def activate_user(self, user_id: str) -> None:
+        user = await self._repo.find_by_id(user_id)
+        if not user or not user.id:
+            raise ValueError("not_found")
+        if user.role == Role.ADMIN:
+            raise ValueError("cannot_activate_admin")
+        ok = await self._repo.set_account_status(user.id, AccountStatus.ACTIVE)
         if not ok:
             raise ValueError("not_found")
 

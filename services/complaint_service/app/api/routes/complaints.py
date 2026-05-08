@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import FileResponse
 
 from app.api.deps import get_complaint_service, get_jwt_user, get_user_client
-from app.api.schemas import AnalyticsResponse, ComplaintCreate, ComplaintPatchBody, ComplaintResponse
+from app.api.schemas import AnalyticsResponse, ComplaintCreate, ComplaintPatchBody, ComplaintResponse, ReviewResponse
 from app.application.complaint_service import ComplaintApplicationService
 from app.config import get_settings
 from app.domain.models import ComplaintDocument, JwtUser
@@ -326,6 +326,42 @@ async def upload_attachment(
         if str(e) == "cannot_attach":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Request failed")
         raise
+
+
+@router.get("/reviews", response_model=list[ReviewResponse])
+async def list_reviews(
+    user: Annotated[JwtUser, Depends(get_jwt_user)],
+    svc: Annotated[ComplaintApplicationService, Depends(get_complaint_service)],
+    users: Annotated[UserServiceClient, Depends(get_user_client)],
+    rating: int | None = Query(None, ge=1, le=5),
+    staff_id: str | None = Query(None),
+) -> list[ReviewResponse]:
+    try:
+        rows = await svc.list_reviews(user, rating=rating, staff_id=staff_id)
+    except PermissionError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Request failed")
+    ids: set[str] = set()
+    for c in rows:
+        ids.add(c.resident_id)
+        if c.assigned_staff_id:
+            ids.add(c.assigned_staff_id)
+    profiles = await users.get_users_batch(list(ids))
+    result: list[ReviewResponse] = []
+    for c in rows:
+        rn = profiles.get(c.resident_id, {}).get("full_name")
+        an = None
+        if c.assigned_staff_id:
+            an = profiles.get(c.assigned_staff_id, {}).get("full_name")
+        result.append(ReviewResponse(
+            public_id=c.public_id,
+            resident_name=rn if isinstance(rn, str) else None,
+            assigned_staff_id=c.assigned_staff_id,
+            assigned_staff_name=an if isinstance(an, str) else None,
+            resident_feedback=c.resident_feedback,
+            rating=c.rating or 0,
+            completed_at=c.completed_at or c.updated_at,
+        ))
+    return result
 
 
 @router.get("/analytics/summary", response_model=AnalyticsResponse)

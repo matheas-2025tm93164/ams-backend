@@ -118,6 +118,22 @@ class ComplaintRepository:
         pipeline = [{"$group": {"_id": "$category", "count": {"$sum": 1}}}]
         return await self._col.aggregate(list(pipeline)).to_list(length=50)
 
+    async def list_reviews(
+        self,
+        staff_id: str | None = None,
+        rating: int | None = None,
+    ) -> list[ComplaintDocument]:
+        q: dict = {
+            "status": ComplaintStatus.COMPLETED.value,
+            "rating": {"$ne": None},
+        }
+        if staff_id:
+            q["assigned_staff_id"] = staff_id
+        if rating is not None:
+            q["rating"] = rating
+        cursor = self._col.find(q).sort("completed_at", -1)
+        return [ComplaintDocument.from_mongo(d) async for d in cursor]
+
     @staticmethod
     def utcnow() -> datetime:
         return datetime.now(timezone.utc)

@@ -5,7 +5,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_auth_service, get_user_repo, require_admin
-from app.api.schemas import AdminUserRow, ResidentOnboardRequest, StaffOnboardRequest, UserResponse
+from app.api.schemas import (
+    AdminUserRow,
+    ResidentOnboardRequest,
+    ResidentUpdateRequest,
+    StaffOnboardRequest,
+    StaffUpdateRequest,
+    UserResponse,
+)
 from app.application.auth_service import AuthService
 from app.domain.models import UserDocument, UserPublic
 from app.infrastructure.user_repository import UserRepository
@@ -107,6 +114,80 @@ async def onboard_resident(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Request failed")
         raise
     return _user_response(u)
+
+
+@router.api_route("/staff/{user_id}", methods=["PATCH", "POST"], response_model=UserResponse)
+async def update_staff_user(
+    user_id: str,
+    body: StaffUpdateRequest,
+    _: Annotated[UserPublic, Depends(require_admin)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+) -> UserResponse:
+    try:
+        u = await auth.update_staff(
+            user_id,
+            full_name=body.full_name,
+            address=body.address,
+            phone=str(body.phone),
+            aadhar=body.aadhar,
+            password=body.password,
+        )
+        return _user_response(u)
+    except ValueError as e:
+        code = str(e)
+        if code == "not_found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Request failed")
+        if code == "wrong_role":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Request failed")
+        raise
+
+
+@router.api_route(
+    "/residents/{user_id}",
+    methods=["PATCH", "POST"],
+    response_model=UserResponse,
+)
+async def update_resident_user(
+    user_id: str,
+    body: ResidentUpdateRequest,
+    _: Annotated[UserPublic, Depends(require_admin)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+) -> UserResponse:
+    try:
+        u = await auth.update_resident(
+            user_id,
+            full_name=body.full_name,
+            phone=str(body.phone),
+            aadhar=body.aadhar,
+            family_members=body.family_members,
+            password=body.password,
+        )
+        return _user_response(u)
+    except ValueError as e:
+        code = str(e)
+        if code == "not_found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Request failed")
+        if code == "wrong_role":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Request failed")
+        if code == "family_duplicate_primary":
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Request failed")
+        raise
+
+
+@router.post("/users/{user_id}/activate", status_code=status.HTTP_204_NO_CONTENT)
+async def activate_user(
+    user_id: str,
+    _: Annotated[UserPublic, Depends(require_admin)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+) -> None:
+    try:
+        await auth.activate_user(user_id)
+    except ValueError as e:
+        if str(e) == "not_found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Request failed")
+        if str(e) == "cannot_activate_admin":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Request failed")
+        raise
 
 
 @router.post("/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)

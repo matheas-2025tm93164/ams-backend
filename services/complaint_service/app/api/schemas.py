@@ -91,5 +91,15 @@ class ComplaintResponse(BaseModel):
     rating: int | None
 
 
+class ReviewResponse(BaseModel):
+    public_id: str
+    resident_name: str | None = None
+    assigned_staff_id: str | None = None
+    assigned_staff_name: str | None = None
+    resident_feedback: str | None
+    rating: int
+    completed_at: datetime
+
+
 class AnalyticsResponse(BaseModel):
     by_category: list[dict]

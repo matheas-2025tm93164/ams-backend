@@ -250,6 +250,19 @@ class ComplaintApplicationService:
         await self._repo.update(c)
         return c
 
+    async def list_reviews(
+        self,
+        user: JwtUser,
+        rating: int | None = None,
+        staff_id: str | None = None,
+    ) -> list[ComplaintDocument]:
+        role = Role(user.role)
+        if role == Role.ADMIN:
+            return await self._repo.list_reviews(staff_id=staff_id, rating=rating)
+        if role == Role.MAINTENANCE_STAFF:
+            return await self._repo.list_reviews(staff_id=user.id, rating=rating)
+        raise PermissionError("forbidden")
+
     async def analytics(self, user: JwtUser) -> dict:
         if Role(user.role) != Role.ADMIN:
             raise PermissionError("forbidden")

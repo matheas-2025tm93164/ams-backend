@@ -96,6 +96,19 @@ class UserRepository:
         )
         return r.matched_count > 0
 
+    async def update_user_fields(self, user_id: str, fields: dict) -> bool:
+        from bson import ObjectId
+        from bson.errors import InvalidId
+
+        if not fields:
+            return True
+        try:
+            oid = ObjectId(user_id)
+        except InvalidId:
+            return False
+        r = await self._col.update_one({"_id": oid}, {"$set": fields})
+        return r.matched_count > 0
+
     @staticmethod
     def utcnow() -> datetime:
         return datetime.now(timezone.utc)
