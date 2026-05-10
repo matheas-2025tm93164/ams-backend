@@ -197,6 +197,40 @@ pytest --cov=services --cov-report=term-missing
 | `tests/test_admin_schemas.py` | Onboard/update schemas |
 | `packages/shared/tests/test_jwt_roundtrip.py` | JWT encode/decode |
 
+## Production deployment (AWS EC2, Approach 1)
+
+Single VM with Docker Compose: MongoDB and **user** / **complaint** services stay on the Docker network only; **only the gateway** is published to the host (default port **8000**). Use `docker-compose.prod.yml` plus a local env file for secrets.
+
+### 1. EC2 instance
+
+- Ubuntu 22.04 LTS (or similar), **t3.small** or larger is enough for demos.
+- Install [Docker Engine](https://docs.docker.com/engine/install/ubuntu/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/).
+- In the **security group**, allow **TCP 22** (SSH from your IP) and **TCP 8000** (API from your IP, or `0.0.0.0/0` only for short-lived demos).
+
+### 2. Deploy on the instance
+
+```bash
+git clone <your-repo-url>
+cd ams-backend
+cp .env.production.example .env.production
+# Edit .env.production: set JWT_SECRET (32+ chars) and CORS_ORIGINS to your real frontend URL(s).
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+```
+
+Point the Flutter app / web client at **`http://<EC2_PUBLIC_IP>:8000`** (or set `GATEWAY_PUBLISH` in `.env.production` if you change the published port).
+
+### 3. Operations
+
+- **Logs:** `docker compose -f docker-compose.prod.yml --env-file .env.production logs -f gateway`
+- **Stop:** `docker compose -f docker-compose.prod.yml --env-file .env.production down`
+- **Data:** Mongo and uploads live in Docker volumes (`mongo_data`, `complaint_uploads`). Back up the instance or use volume backup tools if the demo matters.
+
+### 4. Optional hardening (still small-scale)
+
+- Put **Nginx** or **Caddy** on the host (or in another container) on **80/443** and reverse-proxy to `gateway:8000` inside the compose network; terminate TLS if you have a domain.
+- Restrict **CORS_ORIGINS** and the security group to known IPs when possible.
+- Set `SEED_DEMO_USERS=1` only for the first boot, then `0` for subsequent restarts.
+
 ## Data Cleanup Scripts
 
 From the project root:

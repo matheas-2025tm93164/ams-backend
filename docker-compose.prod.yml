@@ -1,0 +1,73 @@
+# Production-style stack for a single host (e.g. AWS EC2).
+# - MongoDB and internal services are NOT published to the host; only the API gateway is.
+# - Provide secrets via: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# See README "Production deployment (AWS EC2)" and .env.production.example
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  user-service:
+    build: .
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    working_dir: /app/services/user_service
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: users_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (min 32 chars). Use --env-file .env.production}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-0}
+      PYTHONPATH: /app/packages/shared/src:/app/services/user_service
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  complaint-service:
+    build: .
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+    working_dir: /app/services/complaint_service
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: complaints_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (min 32 chars). Use --env-file .env.production}
+      USER_SERVICE_URL: http://user-service:8001
+      UPLOAD_DIR: /data/uploads
+      PYTHONPATH: /app/packages/shared/src:/app/services/complaint_service
+    volumes:
+      - complaint_uploads:/data/uploads
+    depends_on:
+      user-service:
+        condition: service_started
+
+  gateway:
+    build: .
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    working_dir: /app/services/gateway
+    environment:
+      USER_SERVICE_URL: http://user-service:8001
+      COMPLAINT_SERVICE_URL: http://complaint-service:8002
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS (comma-separated origins, no spaces). Use --env-file .env.production}
+      PYTHONPATH: /app/packages/shared/src:/app/services/gateway
+    ports:
+      - "${GATEWAY_PUBLISH:-8000}:8000"
+    depends_on:
+      user-service:
+        condition: service_started
+      complaint-service:
+        condition: service_started
+
+volumes:
+  mongo_data:
+  complaint_uploads:
